@@ -54,7 +54,7 @@ describe("search state reset on searchMode change", () => {
 
     // Navigate to search view.
     await act(async () => {
-      await user.click(screen.getByRole("button", { name: "+ Add" }));
+      await user.click(screen.getByRole("button", { name: "Add" }));
     });
 
     // Type a query so query state is non-empty.
@@ -121,7 +121,7 @@ describe("search state reset on searchMode change", () => {
 
     // Navigate to search view.
     await act(async () => {
-      await user.click(screen.getByRole("button", { name: "+ Add" }));
+      await user.click(screen.getByRole("button", { name: "Add" }));
     });
 
     // Switch to actor mode first.
@@ -154,7 +154,7 @@ describe("search state reset on searchMode change", () => {
 
     // Navigate to search view so the input is mounted.
     await act(async () => {
-      await user.click(screen.getByRole("button", { name: "+ Add" }));
+      await user.click(screen.getByRole("button", { name: "Add" }));
     });
 
     const input = screen.getByPlaceholderText(/search movies/i);
@@ -194,7 +194,7 @@ describe("mode-button delegates reset to useEffect", () => {
 
     // Navigate to search view.
     await act(async () => {
-      await user.click(screen.getByRole("button", { name: "+ Add" }));
+      await user.click(screen.getByRole("button", { name: "Add" }));
     });
 
     // Confirm we start in movie mode.
@@ -240,7 +240,7 @@ describe("search state reset on view change", () => {
 
     // Navigate to search view.
     await act(async () => {
-      await user.click(screen.getByRole("button", { name: "+ Add" }));
+      await user.click(screen.getByRole("button", { name: "Add" }));
     });
 
     // Type a query into the search input so query state is non-empty.
@@ -260,7 +260,7 @@ describe("search state reset on view change", () => {
     // We are now in the "available" view — the search input is not rendered.
     // Switch back to search view to verify state was cleared.
     await act(async () => {
-      await user.click(screen.getByRole("button", { name: "+ Add" }));
+      await user.click(screen.getByRole("button", { name: "Add" }));
     });
 
     // query should be empty again — input value should be "".
@@ -284,7 +284,7 @@ describe("search state reset on view change", () => {
 
     // Go to search, type something, then submit to populate searchResults.
     await act(async () => {
-      await user.click(screen.getByRole("button", { name: "+ Add" }));
+      await user.click(screen.getByRole("button", { name: "Add" }));
     });
 
     const input = screen.getByPlaceholderText(/search movies/i);
@@ -295,7 +295,7 @@ describe("search state reset on view change", () => {
 
     // Switch to "Full List" (watchlist) — a non-search view.
     await act(async () => {
-      await user.click(screen.getByRole("button", { name: "Full List" }));
+      await user.click(screen.getByRole("button", { name: "My List" }));
     });
 
     // Now switch to "Services" — another non-search view.
@@ -305,7 +305,7 @@ describe("search state reset on view change", () => {
 
     // Now return to search view — state should be reset.
     await act(async () => {
-      await user.click(screen.getByRole("button", { name: "+ Add" }));
+      await user.click(screen.getByRole("button", { name: "Add" }));
     });
 
     const inputAfterReturn = screen.getByPlaceholderText(/search movies/i);
@@ -322,7 +322,7 @@ describe("search state reset on view change", () => {
     });
 
     await act(async () => {
-      await user.click(screen.getByRole("button", { name: "+ Add" }));
+      await user.click(screen.getByRole("button", { name: "Add" }));
     });
 
     const input = screen.getByPlaceholderText(/search movies/i);
@@ -338,7 +338,7 @@ describe("search state reset on view change", () => {
 
     // Return to search — state should already be cleared.
     await act(async () => {
-      await user.click(screen.getByRole("button", { name: "+ Add" }));
+      await user.click(screen.getByRole("button", { name: "Add" }));
     });
 
     expect(screen.getByPlaceholderText(/search movies/i)).toHaveValue("");
