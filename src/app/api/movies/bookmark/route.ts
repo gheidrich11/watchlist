@@ -8,11 +8,29 @@
 // All operations scoped to userId=1 until auth lands.
 
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import db from "@/lib/db";
 
 const DEFAULT_USER_ID = 1;
 const VALID_STATUSES = ["want", "watched", "dismissed"] as const;
-type Status = typeof VALID_STATUSES[number];
+type Status = (typeof VALID_STATUSES)[number];
+
+const insertStmt = db.prepare(
+  `INSERT INTO bookmark (user_id, tmdb_id, title, poster_path, release_year)
+   VALUES (?, ?, ?, ?, ?)
+   ON CONFLICT(user_id, tmdb_id) DO NOTHING`
+);
+
+const getByUserTmdb = db.prepare(
+  `SELECT * FROM bookmark WHERE user_id = ? AND tmdb_id = ?`
+);
+
+const updateStatusStmt = db.prepare(
+  `UPDATE bookmark SET status = ?, updated_at = datetime('now') WHERE user_id = ? AND tmdb_id = ?`
+);
+
+const deleteStmt = db.prepare(
+  `DELETE FROM bookmark WHERE user_id = ? AND tmdb_id = ?`
+);
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
@@ -25,17 +43,8 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const bookmark = await prisma.bookmark.upsert({
-    where: { userId_tmdbId: { userId: DEFAULT_USER_ID, tmdbId } },
-    create: {
-      userId: DEFAULT_USER_ID,
-      tmdbId,
-      title,
-      posterPath: posterPath ?? null,
-      releaseYear: releaseYear ?? null,
-    },
-    update: {}, // already bookmarked - no-op
-  });
+  insertStmt.run(DEFAULT_USER_ID, tmdbId, title, posterPath ?? null, releaseYear ?? null);
+  const bookmark = getByUserTmdb.get(DEFAULT_USER_ID, tmdbId);
 
   return NextResponse.json({ bookmark });
 }
@@ -43,15 +52,18 @@ export async function POST(req: NextRequest) {
 export async function GET(req: NextRequest) {
   const status = req.nextUrl.searchParams.get("status");
 
-  const where: { userId: number; status?: Status } = { userId: DEFAULT_USER_ID };
+  let bookmarks;
   if (status && VALID_STATUSES.includes(status as Status)) {
-    where.status = status as Status;
+    const stmt = db.prepare(
+      `SELECT * FROM bookmark WHERE user_id = ? AND status = ? ORDER BY created_at DESC`
+    );
+    bookmarks = stmt.all(DEFAULT_USER_ID, status);
+  } else {
+    const stmt = db.prepare(
+      `SELECT * FROM bookmark WHERE user_id = ? ORDER BY created_at DESC`
+    );
+    bookmarks = stmt.all(DEFAULT_USER_ID);
   }
-
-  const bookmarks = await prisma.bookmark.findMany({
-    where,
-    orderBy: { createdAt: "desc" },
-  });
 
   return NextResponse.json({ bookmarks });
 }
@@ -67,23 +79,30 @@ export async function PATCH(req: NextRequest) {
     );
   }
 
-  const bookmark = await prisma.bookmark.update({
-    where: { userId_tmdbId: { userId: DEFAULT_USER_ID, tmdbId } },
-    data: { status },
-  });
+  updateStatusStmt.run(status, DEFAULT_USER_ID, tmdbId);
+  const bookmark = getByUserTmdb.get(DEFAULT_USER_ID, tmdbId);
 
   return NextResponse.json({ bookmark });
 }
 
 export async function DELETE(req: NextRequest) {
   const tmdbId = Number(req.nextUrl.searchParams.get("tmdbId"));
-  if (!tmdbId) {
-    return NextResponse.json({ error: "tmdbId required" }, { status: 400 });
+  const status = req.nextUrl.searchParams.get("status");
+
+  if (status && VALID_STATUSES.includes(status as Status)) {
+    // Bulk delete by status
+    const bulkDelete = db.prepare(
+      `DELETE FROM bookmark WHERE user_id = ? AND status = ?`
+    );
+    bulkDelete.run(DEFAULT_USER_ID, status);
+    return NextResponse.json({ ok: true });
   }
 
-  await prisma.bookmark.delete({
-    where: { userId_tmdbId: { userId: DEFAULT_USER_ID, tmdbId } },
-  });
+  if (!tmdbId) {
+    return NextResponse.json({ error: "tmdbId or status required" }, { status: 400 });
+  }
+
+  deleteStmt.run(DEFAULT_USER_ID, tmdbId);
 
   return NextResponse.json({ ok: true });
 }

@@ -1,41 +1,45 @@
-// Provider cache - the rate-limit safety net.
-//
-// TMDB allows ~40 req/10s. A 30-movie watchlist refreshing on every page load
-// would burn through that fast. We cache provider responses with a 24h TTL.
-//
-// Cache invalidation is age-based, not event-based. If providers change for a
-// movie between cache writes, you'll see stale data until TTL expires. For a
-// personal watchlist that's an acceptable tradeoff.
+// Provider cache - 24h TTL over TMDB watch/providers data.
+// Synchronous SQLite reads, async TMDB fetches only when stale.
 
-import { PrismaClient } from "@prisma/client";
+import db from "./db";
 import { getWatchProviders, type TmdbProviderResponse } from "./tmdb";
 
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
+interface CacheRow {
+  provider_data: string;
+  fetched_at: string;
+}
+
+const getStmt = db.prepare(
+  `SELECT provider_data, fetched_at FROM provider_cache WHERE tmdb_id = ? AND region = ?`
+);
+
+const upsertStmt = db.prepare(
+  `INSERT INTO provider_cache (tmdb_id, region, provider_data, fetched_at)
+   VALUES (?, ?, ?, datetime('now'))
+   ON CONFLICT(tmdb_id, region)
+   DO UPDATE SET provider_data = excluded.provider_data, fetched_at = datetime('now')`
+);
+
 export async function getProvidersForMovie(
-  prisma: PrismaClient,
   tmdbId: number,
   region: string = "US"
 ): Promise<TmdbProviderResponse | null> {
-  const cached = await prisma.providerCache.findUnique({
-    where: { tmdbId_region: { tmdbId, region } },
-  });
+  const cached = getStmt.get(tmdbId, region) as CacheRow | undefined;
 
-  const isFresh = cached && Date.now() - cached.fetchedAt.getTime() < CACHE_TTL_MS;
-
-  if (isFresh) {
-    return JSON.parse(cached.providerData) as TmdbProviderResponse;
+  if (cached) {
+    const fetchedAt = new Date(cached.fetched_at + "Z").getTime();
+    if (Date.now() - fetchedAt < CACHE_TTL_MS) {
+      return JSON.parse(cached.provider_data) as TmdbProviderResponse;
+    }
   }
 
-  // Stale or missing - refetch from TMDB.
+  // Stale or missing — fetch from TMDB
   const fresh = await getWatchProviders(tmdbId, region);
   const serialized = JSON.stringify(fresh ?? {});
 
-  await prisma.providerCache.upsert({
-    where: { tmdbId_region: { tmdbId, region } },
-    create: { tmdbId, region, providerData: serialized },
-    update: { providerData: serialized, fetchedAt: new Date() },
-  });
+  upsertStmt.run(tmdbId, region, serialized);
 
   return fresh;
 }
