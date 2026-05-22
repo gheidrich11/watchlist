@@ -1,54 +1,77 @@
-// SQLite database singleton using better-sqlite3.
-// Synchronous, zero ceremony. Tables created on first import.
+// Turso (libsql) database client.
+// Async, network-backed. Schema auto-initialized on first import.
 
-import Database from "better-sqlite3";
-import path from "path";
+import { createClient } from "@libsql/client";
 
-const DB_PATH = process.env.DATABASE_URL?.replace("file:", "") ?? path.join(process.cwd(), "dev.db");
+if (!process.env.TURSO_DATABASE_URL) {
+  throw new Error("TURSO_DATABASE_URL is not set");
+}
+if (!process.env.TURSO_AUTH_TOKEN) {
+  throw new Error("TURSO_AUTH_TOKEN is not set");
+}
 
-const db = new Database(DB_PATH);
+const db = createClient({
+  url: process.env.TURSO_DATABASE_URL,
+  authToken: process.env.TURSO_AUTH_TOKEN,
+});
 
-// WAL mode for better concurrent read performance
-db.pragma("journal_mode = WAL");
-db.pragma("foreign_keys = ON");
+// Initialize schema on first connection
+async function initSchema() {
+  try {
+    // Create bookmark table
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS bookmark (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        tmdb_id INTEGER NOT NULL,
+        title TEXT NOT NULL,
+        poster_path TEXT,
+        release_year INTEGER,
+        status TEXT NOT NULL DEFAULT 'want' CHECK (status IN ('want', 'watched', 'dismissed')),
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(user_id, tmdb_id)
+      )
+    `, []);
 
-// Create tables if they don't exist
-db.exec(`
-  CREATE TABLE IF NOT EXISTS bookmark (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER NOT NULL DEFAULT 1,
-    tmdb_id INTEGER NOT NULL,
-    title TEXT NOT NULL,
-    poster_path TEXT,
-    release_year INTEGER,
-    status TEXT NOT NULL DEFAULT 'want',
-    created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-    UNIQUE(user_id, tmdb_id)
-  );
+    // Create user_service table
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS user_service (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        provider_id INTEGER NOT NULL,
+        provider_name TEXT NOT NULL,
+        region TEXT NOT NULL DEFAULT 'US',
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(user_id, provider_id, region)
+      )
+    `, []);
 
-  CREATE INDEX IF NOT EXISTS idx_bookmark_user_status ON bookmark(user_id, status);
+    // Create provider_cache table
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS provider_cache (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        tmdb_id INTEGER NOT NULL,
+        region TEXT NOT NULL DEFAULT 'US',
+        provider_data TEXT NOT NULL,
+        fetched_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(tmdb_id, region)
+      )
+    `, []);
+  } catch (err) {
+    // Table already exists or other error; in production, log this properly
+    console.error("Schema initialization warning:", err);
+  }
+}
 
-  CREATE TABLE IF NOT EXISTS user_service (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER NOT NULL DEFAULT 1,
-    provider_id INTEGER NOT NULL,
-    provider_name TEXT NOT NULL,
-    region TEXT NOT NULL DEFAULT 'US',
-    created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    UNIQUE(user_id, provider_id, region)
-  );
+// Initialize on import (fire and forget, but ensure it completes before requests)
+let schemaPromise: Promise<void> | null = initSchema();
 
-  CREATE TABLE IF NOT EXISTS provider_cache (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    tmdb_id INTEGER NOT NULL,
-    region TEXT NOT NULL DEFAULT 'US',
-    provider_data TEXT NOT NULL,
-    fetched_at TEXT NOT NULL DEFAULT (datetime('now')),
-    UNIQUE(tmdb_id, region)
-  );
-
-  CREATE INDEX IF NOT EXISTS idx_provider_cache_fetched ON provider_cache(fetched_at);
-`);
+export async function ensureSchema() {
+  if (schemaPromise) {
+    await schemaPromise;
+    schemaPromise = null;
+  }
+}
 
 export default db;

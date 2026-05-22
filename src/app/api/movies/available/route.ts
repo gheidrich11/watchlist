@@ -7,7 +7,7 @@
 // Rent and buy are deliberately excluded.
 
 import { NextRequest, NextResponse } from "next/server";
-import db from "@/lib/db";
+import db, { ensureSchema } from "@/lib/db";
 import { getProvidersForMovie } from "@/lib/providerCache";
 
 const DEFAULT_USER_ID = 1;
@@ -50,17 +50,20 @@ interface ServiceRow {
   provider_name: string;
 }
 
-const getServices = db.prepare(
-  `SELECT provider_id, provider_name FROM user_service WHERE user_id = ? AND region = ?`
-);
-
-const getWantBookmarks = db.prepare(
-  `SELECT tmdb_id, title, poster_path, release_year FROM bookmark WHERE user_id = ? AND status = 'want'`
-);
-
 export async function GET(_req: NextRequest) {
-  const services = getServices.all(DEFAULT_USER_ID, DEFAULT_REGION) as ServiceRow[];
-  const bookmarks = getWantBookmarks.all(DEFAULT_USER_ID) as BookmarkRow[];
+  await ensureSchema();
+  
+  const servicesResult = await db.execute(
+    `SELECT provider_id, provider_name FROM user_service WHERE user_id = ? AND region = ?`,
+    [DEFAULT_USER_ID, DEFAULT_REGION]
+  );
+  const services = servicesResult.rows as unknown as ServiceRow[];
+  
+  const bookmarksResult = await db.execute(
+    `SELECT tmdb_id, title, poster_path, release_year FROM bookmark WHERE user_id = ? AND status = 'want'`,
+    [DEFAULT_USER_ID]
+  );
+  const bookmarks = bookmarksResult.rows as unknown as BookmarkRow[];
 
   const ownedProviderIds = new Set(services.map((s) => s.provider_id));
 
