@@ -2,6 +2,7 @@ node_modules/
 .next/
 out/
 *.log
+*.tsbuildinfo
 .env
 .env.local
 .env*.local
@@ -9,6 +10,7 @@ prisma/dev.db
 prisma/dev.db-journal
 .DS_Store
 CLAUDE.md
+.claude/
 
 # Local SQLite (legacy v1)
 dev.db
