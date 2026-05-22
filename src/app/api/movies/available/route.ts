@@ -90,6 +90,20 @@ export async function GET(_req: NextRequest) {
   const idToName = new Map<number, string>();
   services.forEach((s) => idToName.set(s.provider_id, s.provider_name));
 
+  // TMDB returns tier-variant provider names (e.g. "Paramount Plus Premium")
+  // that have different IDs than the base service (531 = "Paramount Plus").
+  // This resolves a TMDB provider to the matching owned-service group name,
+  // first by exact ID, then by name-prefix (tier variant fallback).
+  function resolveOwnedGroup(providerId: number, providerName: string): string | null {
+    if (ownedProviderIds.has(providerId)) return idToName.get(providerId)!;
+    for (const [, ownedName] of idToName) {
+      if (providerName.startsWith(ownedName + " ") || providerName === ownedName) {
+        return ownedName;
+      }
+    }
+    return null;
+  }
+
   for (const bookmark of bookmarks) {
     const providerData = await getProvidersForMovie(bookmark.tmdb_id, DEFAULT_REGION);
 
@@ -99,8 +113,9 @@ export async function GET(_req: NextRequest) {
     for (const type of ["flatrate", "ads"] as const) {
       const providers = providerData?.[type] ?? [];
       for (const p of providers) {
-        if (ownedProviderIds.has(p.provider_id)) {
-          const groupName = idToName.get(p.provider_id)!;
+        const ownedGroupName = resolveOwnedGroup(p.provider_id, p.provider_name);
+        if (ownedGroupName !== null) {
+          const groupName = ownedGroupName;
           const dedupeKey = `${groupName}:${bookmark.tmdb_id}`;
           if (seenGroups.has(dedupeKey)) continue;
           seenGroups.add(dedupeKey);
