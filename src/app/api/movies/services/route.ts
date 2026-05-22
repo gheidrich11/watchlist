@@ -2,7 +2,7 @@
 // POST /api/movies/services — toggle a service on or off
 
 import { NextRequest, NextResponse } from "next/server";
-import db from "@/lib/db";
+import db, { ensureSchema } from "@/lib/db";
 
 const DEFAULT_USER_ID = 1;
 const DEFAULT_REGION = "US";
@@ -27,21 +27,15 @@ const KNOWN_SERVICES = [
   { providerId: 538, providerName: "Plex", logoPath: "/vLZKlXUNDcZR7ilvfY9Wr9k80FZ.jpg" },
 ];
 
-const getSubscribed = db.prepare(
-  `SELECT provider_id FROM user_service WHERE user_id = ? AND region = ?`
-);
-
-const addService = db.prepare(
-  `INSERT OR IGNORE INTO user_service (user_id, provider_id, provider_name, region) VALUES (?, ?, ?, ?)`
-);
-
-const removeService = db.prepare(
-  `DELETE FROM user_service WHERE user_id = ? AND provider_id = ? AND region = ?`
-);
-
 export async function GET() {
-  const rows = getSubscribed.all(DEFAULT_USER_ID, DEFAULT_REGION) as { provider_id: number }[];
-  const subscribedIds = new Set(rows.map((r) => r.provider_id));
+  await ensureSchema();
+  
+  const result = await db.execute(
+    `SELECT provider_id FROM user_service WHERE user_id = ? AND region = ?`,
+    [DEFAULT_USER_ID, DEFAULT_REGION]
+  );
+  
+  const subscribedIds = new Set((result.rows as any[]).map((r) => r.provider_id));
 
   const services = KNOWN_SERVICES.map((s) => ({
     ...s,
@@ -52,6 +46,7 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
+  await ensureSchema();
   const body = await req.json();
   const { providerId, providerName, subscribed } = body;
 
@@ -60,9 +55,15 @@ export async function POST(req: NextRequest) {
   }
 
   if (subscribed) {
-    addService.run(DEFAULT_USER_ID, providerId, providerName, DEFAULT_REGION);
+    await db.execute(
+      `INSERT OR IGNORE INTO user_service (user_id, provider_id, provider_name, region) VALUES (?, ?, ?, ?)`,
+      [DEFAULT_USER_ID, providerId, providerName, DEFAULT_REGION]
+    );
   } else {
-    removeService.run(DEFAULT_USER_ID, providerId, DEFAULT_REGION);
+    await db.execute(
+      `DELETE FROM user_service WHERE user_id = ? AND provider_id = ? AND region = ?`,
+      [DEFAULT_USER_ID, providerId, DEFAULT_REGION]
+    );
   }
 
   return NextResponse.json({ ok: true });

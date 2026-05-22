@@ -8,31 +8,14 @@
 // All operations scoped to userId=1 until auth lands.
 
 import { NextRequest, NextResponse } from "next/server";
-import db from "@/lib/db";
+import db, { ensureSchema } from "@/lib/db";
 
 const DEFAULT_USER_ID = 1;
 const VALID_STATUSES = ["want", "watched", "dismissed"] as const;
 type Status = (typeof VALID_STATUSES)[number];
 
-const insertStmt = db.prepare(
-  `INSERT INTO bookmark (user_id, tmdb_id, title, poster_path, release_year)
-   VALUES (?, ?, ?, ?, ?)
-   ON CONFLICT(user_id, tmdb_id) DO NOTHING`
-);
-
-const getByUserTmdb = db.prepare(
-  `SELECT * FROM bookmark WHERE user_id = ? AND tmdb_id = ?`
-);
-
-const updateStatusStmt = db.prepare(
-  `UPDATE bookmark SET status = ?, updated_at = datetime('now') WHERE user_id = ? AND tmdb_id = ?`
-);
-
-const deleteStmt = db.prepare(
-  `DELETE FROM bookmark WHERE user_id = ? AND tmdb_id = ?`
-);
-
 export async function POST(req: NextRequest) {
+  await ensureSchema();
   const body = await req.json();
   const { tmdbId, title, posterPath, releaseYear } = body;
 
@@ -43,32 +26,44 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  insertStmt.run(DEFAULT_USER_ID, tmdbId, title, posterPath ?? null, releaseYear ?? null);
-  const bookmark = getByUserTmdb.get(DEFAULT_USER_ID, tmdbId);
+  await db.execute(
+    `INSERT INTO bookmark (user_id, tmdb_id, title, poster_path, release_year)
+     VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT(user_id, tmdb_id) DO NOTHING`,
+    [DEFAULT_USER_ID, tmdbId, title, posterPath ?? null, releaseYear ?? null]
+  );
+
+  const result = await db.execute(
+    `SELECT * FROM bookmark WHERE user_id = ? AND tmdb_id = ?`,
+    [DEFAULT_USER_ID, tmdbId]
+  );
+  const bookmark = result.rows[0];
 
   return NextResponse.json({ bookmark });
 }
 
 export async function GET(req: NextRequest) {
+  await ensureSchema();
   const status = req.nextUrl.searchParams.get("status");
 
-  let bookmarks;
+  let result;
   if (status && VALID_STATUSES.includes(status as Status)) {
-    const stmt = db.prepare(
-      `SELECT * FROM bookmark WHERE user_id = ? AND status = ? ORDER BY created_at DESC`
+    result = await db.execute(
+      `SELECT * FROM bookmark WHERE user_id = ? AND status = ? ORDER BY created_at DESC`,
+      [DEFAULT_USER_ID, status]
     );
-    bookmarks = stmt.all(DEFAULT_USER_ID, status);
   } else {
-    const stmt = db.prepare(
-      `SELECT * FROM bookmark WHERE user_id = ? ORDER BY created_at DESC`
+    result = await db.execute(
+      `SELECT * FROM bookmark WHERE user_id = ? ORDER BY created_at DESC`,
+      [DEFAULT_USER_ID]
     );
-    bookmarks = stmt.all(DEFAULT_USER_ID);
   }
 
-  return NextResponse.json({ bookmarks });
+  return NextResponse.json({ bookmarks: result.rows });
 }
 
 export async function PATCH(req: NextRequest) {
+  await ensureSchema();
   const body = await req.json();
   const { tmdbId, status } = body;
 
@@ -79,22 +74,31 @@ export async function PATCH(req: NextRequest) {
     );
   }
 
-  updateStatusStmt.run(status, DEFAULT_USER_ID, tmdbId);
-  const bookmark = getByUserTmdb.get(DEFAULT_USER_ID, tmdbId);
+  await db.execute(
+    `UPDATE bookmark SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ? AND tmdb_id = ?`,
+    [status, DEFAULT_USER_ID, tmdbId]
+  );
+
+  const result = await db.execute(
+    `SELECT * FROM bookmark WHERE user_id = ? AND tmdb_id = ?`,
+    [DEFAULT_USER_ID, tmdbId]
+  );
+  const bookmark = result.rows[0];
 
   return NextResponse.json({ bookmark });
 }
 
 export async function DELETE(req: NextRequest) {
+  await ensureSchema();
   const tmdbId = Number(req.nextUrl.searchParams.get("tmdbId"));
   const status = req.nextUrl.searchParams.get("status");
 
   if (status && VALID_STATUSES.includes(status as Status)) {
     // Bulk delete by status
-    const bulkDelete = db.prepare(
-      `DELETE FROM bookmark WHERE user_id = ? AND status = ?`
+    await db.execute(
+      `DELETE FROM bookmark WHERE user_id = ? AND status = ?`,
+      [DEFAULT_USER_ID, status]
     );
-    bulkDelete.run(DEFAULT_USER_ID, status);
     return NextResponse.json({ ok: true });
   }
 
@@ -102,7 +106,10 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: "tmdbId or status required" }, { status: 400 });
   }
 
-  deleteStmt.run(DEFAULT_USER_ID, tmdbId);
+  await db.execute(
+    `DELETE FROM bookmark WHERE user_id = ? AND tmdb_id = ?`,
+    [DEFAULT_USER_ID, tmdbId]
+  );
 
   return NextResponse.json({ ok: true });
 }
