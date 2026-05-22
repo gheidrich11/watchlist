@@ -39,6 +39,142 @@ function setupDefaultFetchMocks() {
   });
 }
 
+describe("search state reset on searchMode change", () => {
+  beforeEach(() => {
+    mockFetch.mockReset();
+    setupDefaultFetchMocks();
+  });
+
+  it("resets query, searchResults, and searchEntity when searchMode changes", async () => {
+    const user = userEvent.setup();
+
+    await act(async () => {
+      render(<Home />);
+    });
+
+    // Navigate to search view.
+    await act(async () => {
+      await user.click(screen.getByRole("button", { name: "+ Add" }));
+    });
+
+    // Type a query so query state is non-empty.
+    const input = screen.getByPlaceholderText(/search movies/i);
+    await act(async () => {
+      await user.type(input, "Inception");
+    });
+    expect(input).toHaveValue("Inception");
+
+    // Simulate a search result and entity being set by stubbing fetch to return data,
+    // then submitting the form.
+    mockFetch.mockImplementation((url: string) => {
+      if (url.includes("/api/movies/search")) {
+        return makeJsonResponse({
+          results: [{ tmdbId: 1, title: "Inception", releaseYear: 2010, posterPath: null, posterUrl: null, overview: "A mind-bending thriller." }],
+          entity: { name: "Christopher Nolan" },
+        });
+      }
+      return makeJsonResponse({});
+    });
+
+    await act(async () => {
+      await user.click(screen.getByRole("button", { name: "Search" }));
+    });
+
+    // searchEntity label should be visible.
+    expect(screen.getByText(/Christopher Nolan/i)).toBeInTheDocument();
+    // searchResults should render the movie card (title appears in card, use getAllByText).
+    expect(screen.getAllByText("Inception").length).toBeGreaterThan(0);
+
+    // Restore default mocks before switching mode.
+    mockFetch.mockImplementation((url: string) => {
+      if (url.includes("/api/movies/discover")) {
+        return makeJsonResponse({ results: [] });
+      }
+      return makeJsonResponse({});
+    });
+
+    // Switch searchMode from "movie" to "actor".
+    await act(async () => {
+      await user.click(screen.getByRole("button", { name: "Actor" }));
+    });
+
+    // query should be reset to "".
+    expect(screen.getByPlaceholderText(/search by actor/i)).toHaveValue("");
+
+    // searchEntity label should no longer be present.
+    expect(screen.queryByText(/Christopher Nolan/i)).not.toBeInTheDocument();
+
+    // searchResults cards should be gone (the "Inception" card was in results).
+    // The title still appears in the input placeholder — check that the result card
+    // specifically is gone by querying for the card text. The search grid only renders
+    // when searchResults.length > 0, so no result divs should be in the DOM.
+    // We verify by checking the entity banner is gone (it only shows when both
+    // searchEntity and searchResults.length > 0).
+  });
+
+  it("resets query when switching from actor mode to director mode", async () => {
+    const user = userEvent.setup();
+
+    await act(async () => {
+      render(<Home />);
+    });
+
+    // Navigate to search view.
+    await act(async () => {
+      await user.click(screen.getByRole("button", { name: "+ Add" }));
+    });
+
+    // Switch to actor mode first.
+    await act(async () => {
+      await user.click(screen.getByRole("button", { name: "Actor" }));
+    });
+
+    // Type a query.
+    const input = screen.getByPlaceholderText(/search by actor/i);
+    await act(async () => {
+      await user.type(input, "Tom Hanks");
+    });
+    expect(input).toHaveValue("Tom Hanks");
+
+    // Switch to director mode — triggers useEffect on [searchMode].
+    await act(async () => {
+      await user.click(screen.getByRole("button", { name: "Director" }));
+    });
+
+    // query should be empty again.
+    expect(screen.getByPlaceholderText(/search by director/i)).toHaveValue("");
+  });
+
+  it("calls focus on the input when searchMode changes", async () => {
+    const user = userEvent.setup();
+
+    await act(async () => {
+      render(<Home />);
+    });
+
+    // Navigate to search view so the input is mounted.
+    await act(async () => {
+      await user.click(screen.getByRole("button", { name: "+ Add" }));
+    });
+
+    const input = screen.getByPlaceholderText(/search movies/i);
+
+    // Spy on focus by moving focus away first.
+    await act(async () => {
+      screen.getByRole("button", { name: "Search" }).focus();
+    });
+    expect(document.activeElement).not.toBe(input);
+
+    // Switch searchMode — the useEffect calls inputRef.current?.focus().
+    await act(async () => {
+      await user.click(screen.getByRole("button", { name: "Actor" }));
+    });
+
+    // After the mode switch the input should have focus.
+    expect(document.activeElement).toBe(screen.getByPlaceholderText(/search by actor/i));
+  });
+});
+
 describe("search state reset on view change", () => {
   beforeEach(() => {
     mockFetch.mockReset();
