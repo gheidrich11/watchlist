@@ -84,6 +84,11 @@ export default function Home() {
   useEffect(() => {
     if (view === "services") fetchServices();
     if (view === "search") fetchRecommended();
+    if (view !== "search") {
+      setQuery("");
+      setSearchResults([]);
+      setSearchEntity(null);
+    }
   }, [view]);
 
   useEffect(() => {
@@ -91,6 +96,13 @@ export default function Home() {
       inputRef.current.focus();
     }
   }, [view]);
+
+  useEffect(() => {
+    setQuery("");
+    setSearchResults([]);
+    setSearchEntity(null);
+    inputRef.current?.focus();
+  }, [searchMode]);
 
   async function fetchServices() {
     const res = await fetch("/api/movies/services");
@@ -211,7 +223,7 @@ export default function Home() {
             {([["movie", "Movie"], ["actor", "Actor"], ["director", "Director"], ["company", "Studio"]] as const).map(([mode, label]) => (
               <button
                 key={mode}
-                onClick={() => { setSearchMode(mode); setSearchResults([]); setSearchEntity(null); inputRef.current?.focus(); }}
+                onClick={() => setSearchMode(mode)}
                 style={{
                   padding: "0.3rem 0.7rem",
                   background: searchMode === mode ? "#2563eb" : "#222",
