@@ -1,19 +1,13 @@
 // GET /api/movies/available
 //
-// The heart of the app. Cross-references active bookmarks (status="want")
-// against the user's configured streaming services, returning movies grouped
-// by provider.
-//
-// Shape returned: { providers: [{ providerId, providerName, movies: [...] }],
-//                   unavailable: [...] }
+// Cross-references active bookmarks (status="want") against the user's
+// configured streaming services, returning movies grouped by provider.
 //
 // A movie appears under EVERY provider that carries it (flatrate OR ads).
-// flatrate/ads distinction preserved per-movie-per-provider via availability[].
-// Rent and buy are deliberately excluded - "available to me" means included
-// in a subscription I already pay for.
+// Rent and buy are deliberately excluded.
 
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import db from "@/lib/db";
 import { getProvidersForMovie } from "@/lib/providerCache";
 
 const DEFAULT_USER_ID = 1;
@@ -32,72 +26,138 @@ interface MovieEntry {
 interface ProviderGroup {
   providerId: number;
   providerName: string;
+  logoPath: string | null;
   movies: MovieEntry[];
 }
 
-export async function GET(_req: NextRequest) {
-  // Pull the user's services and active bookmarks in parallel.
-  const [services, bookmarks] = await Promise.all([
-    prisma.userService.findMany({
-      where: { userId: DEFAULT_USER_ID, region: DEFAULT_REGION },
-    }),
-    prisma.bookmark.findMany({
-      where: { userId: DEFAULT_USER_ID, status: "want" },
-    }),
-  ]);
+interface UnavailableEntry {
+  tmdbId: number;
+  title: string;
+  posterPath: string | null;
+  releaseYear: number | null;
+  rentOptions: { providerName: string; }[];
+}
 
-  const ownedProviderIds = new Set(services.map((s) => s.providerId));
-  const providerGroups = new Map<number, ProviderGroup>();
+interface BookmarkRow {
+  tmdb_id: number;
+  title: string;
+  poster_path: string | null;
+  release_year: number | null;
+}
+
+interface ServiceRow {
+  provider_id: number;
+  provider_name: string;
+}
+
+const getServices = db.prepare(
+  `SELECT provider_id, provider_name FROM user_service WHERE user_id = ? AND region = ?`
+);
+
+const getWantBookmarks = db.prepare(
+  `SELECT tmdb_id, title, poster_path, release_year FROM bookmark WHERE user_id = ? AND status = 'want'`
+);
+
+export async function GET(_req: NextRequest) {
+  const services = getServices.all(DEFAULT_USER_ID, DEFAULT_REGION) as ServiceRow[];
+  const bookmarks = getWantBookmarks.all(DEFAULT_USER_ID) as BookmarkRow[];
+
+  const ownedProviderIds = new Set(services.map((s) => s.provider_id));
+
+  // Group by provider name (not ID) so that tier variants like
+  // "Paramount Plus Premium" / "Paramount Plus Essential" merge into one group.
+  const providerGroups = new Map<string, ProviderGroup>();
   services.forEach((s) => {
-    providerGroups.set(s.providerId, {
-      providerId: s.providerId,
-      providerName: s.providerName,
-      movies: [],
-    });
+    if (!providerGroups.has(s.provider_name)) {
+      providerGroups.set(s.provider_name, {
+        providerId: s.provider_id,
+        providerName: s.provider_name,
+        logoPath: null,
+        movies: [],
+      });
+    }
   });
 
-  const unavailable: Omit<MovieEntry, "availabilityType">[] = [];
+  // Groups for services the user does NOT subscribe to
+  const otherProviderGroups = new Map<string, ProviderGroup>();
 
-  // Fetch provider data for each bookmark (cached, so this is cheap on repeat).
+  const unavailable: UnavailableEntry[] = [];
+
+  // Build a lookup: provider_id -> provider_name (for group resolution)
+  const idToName = new Map<number, string>();
+  services.forEach((s) => idToName.set(s.provider_id, s.provider_name));
+
   for (const bookmark of bookmarks) {
-    const providerData = await getProvidersForMovie(
-      prisma,
-      bookmark.tmdbId,
-      DEFAULT_REGION
-    );
+    const providerData = await getProvidersForMovie(bookmark.tmdb_id, DEFAULT_REGION);
 
-    let foundOnOwned = false;
+    let foundOnAny = false;
+    const seenGroups = new Set<string>(); // prevent duplicate entries in same group
 
-    // flatrate first (subscription), then ads (free with ads on services you have)
     for (const type of ["flatrate", "ads"] as const) {
       const providers = providerData?.[type] ?? [];
       for (const p of providers) {
         if (ownedProviderIds.has(p.provider_id)) {
-          const group = providerGroups.get(p.provider_id)!;
+          const groupName = idToName.get(p.provider_id)!;
+          const dedupeKey = `${groupName}:${bookmark.tmdb_id}`;
+          if (seenGroups.has(dedupeKey)) continue;
+          seenGroups.add(dedupeKey);
+
+          const group = providerGroups.get(groupName)!;
+          if (!group.logoPath) group.logoPath = p.logo_path || null;
           group.movies.push({
-            tmdbId: bookmark.tmdbId,
+            tmdbId: bookmark.tmdb_id,
             title: bookmark.title,
-            posterPath: bookmark.posterPath,
-            releaseYear: bookmark.releaseYear,
+            posterPath: bookmark.poster_path,
+            releaseYear: bookmark.release_year,
             availabilityType: type,
           });
-          foundOnOwned = true;
+          foundOnAny = true;
+        } else {
+          // Available on a service the user doesn't subscribe to
+          // Skip noise providers (channel add-ons, live TV bundles)
+          const name = p.provider_name;
+          if (name.includes("Amazon Channel") || name === "YouTube TV") continue;
+
+          const groupName = name;
+          const dedupeKey = `${groupName}:${bookmark.tmdb_id}`;
+          if (seenGroups.has(dedupeKey)) continue;
+          seenGroups.add(dedupeKey);
+
+          if (!otherProviderGroups.has(groupName)) {
+            otherProviderGroups.set(groupName, {
+              providerId: p.provider_id,
+              providerName: groupName,
+              logoPath: p.logo_path || null,
+              movies: [],
+            });
+          }
+          otherProviderGroups.get(groupName)!.movies.push({
+            tmdbId: bookmark.tmdb_id,
+            title: bookmark.title,
+            posterPath: bookmark.poster_path,
+            releaseYear: bookmark.release_year,
+            availabilityType: type,
+          });
+          foundOnAny = true;
         }
       }
     }
 
-    if (!foundOnOwned) {
+    if (!foundOnAny) {
+      const rentProviders = providerData?.rent ?? [];
       unavailable.push({
-        tmdbId: bookmark.tmdbId,
+        tmdbId: bookmark.tmdb_id,
         title: bookmark.title,
-        posterPath: bookmark.posterPath,
-        releaseYear: bookmark.releaseYear,
+        posterPath: bookmark.poster_path,
+        releaseYear: bookmark.release_year,
+        rentOptions: rentProviders.slice(0, 3).map((p) => ({ providerName: p.provider_name })),
       });
     }
   }
 
   return NextResponse.json({
     providers: Array.from(providerGroups.values()),
+    otherProviders: Array.from(otherProviderGroups.values()),
     unavailable,
   });
 }
