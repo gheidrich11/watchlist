@@ -97,6 +97,13 @@ export default function Home() {
     }
   }, [view]);
 
+  useEffect(() => {
+    setQuery("");
+    setSearchResults([]);
+    setSearchEntity(null);
+    inputRef.current?.focus();
+  }, [searchMode]);
+
   async function fetchServices() {
     const res = await fetch("/api/movies/services");
     const data = await res.json();
