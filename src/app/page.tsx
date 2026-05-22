@@ -223,7 +223,7 @@ export default function Home() {
             {([["movie", "Movie"], ["actor", "Actor"], ["director", "Director"], ["company", "Studio"]] as const).map(([mode, label]) => (
               <button
                 key={mode}
-                onClick={() => { setSearchMode(mode); setSearchResults([]); setSearchEntity(null); inputRef.current?.focus(); }}
+                onClick={() => setSearchMode(mode)}
                 style={{
                   padding: "0.3rem 0.7rem",
                   background: searchMode === mode ? "#2563eb" : "#222",
