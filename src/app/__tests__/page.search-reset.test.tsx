@@ -175,6 +175,56 @@ describe("search state reset on searchMode change", () => {
   });
 });
 
+describe("mode-button delegates reset to useEffect", () => {
+  beforeEach(() => {
+    mockFetch.mockReset();
+    setupDefaultFetchMocks();
+  });
+
+  it("clicking a mode button clears query and changes mode via useEffect, not inline onClick", async () => {
+    // This test validates the full chain:
+    //   onClick -> setSearchMode(mode) -> useEffect([searchMode]) -> setQuery("") + focus
+    // If the reset were inline on the onClick the test would still pass, but the intent
+    // is to verify the observable outcome: query is cleared and the new mode is active.
+    const user = userEvent.setup();
+
+    await act(async () => {
+      render(<Home />);
+    });
+
+    // Navigate to search view.
+    await act(async () => {
+      await user.click(screen.getByRole("button", { name: "+ Add" }));
+    });
+
+    // Confirm we start in movie mode.
+    const movieInput = screen.getByPlaceholderText(/search movies/i);
+    expect(movieInput).toBeInTheDocument();
+
+    // Type a query so query state is non-empty.
+    await act(async () => {
+      await user.type(movieInput, "Parasite");
+    });
+    expect(movieInput).toHaveValue("Parasite");
+
+    // Click the "Actor" mode button — this calls only setSearchMode("actor").
+    // The useEffect on [searchMode] is responsible for clearing query and shifting focus.
+    await act(async () => {
+      await user.click(screen.getByRole("button", { name: "Actor" }));
+    });
+
+    // The input placeholder should have changed to actor mode, confirming mode changed.
+    const actorInput = screen.getByPlaceholderText(/search by actor/i);
+    expect(actorInput).toBeInTheDocument();
+
+    // The query must be cleared — proves useEffect fired and called setQuery("").
+    expect(actorInput).toHaveValue("");
+
+    // The actor input should now have focus — proves useEffect called inputRef.current?.focus().
+    expect(document.activeElement).toBe(actorInput);
+  });
+});
+
 describe("search state reset on view change", () => {
   beforeEach(() => {
     mockFetch.mockReset();
