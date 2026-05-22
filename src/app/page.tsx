@@ -84,6 +84,11 @@ export default function Home() {
   useEffect(() => {
     if (view === "services") fetchServices();
     if (view === "search") fetchRecommended();
+    if (view !== "search") {
+      setQuery("");
+      setSearchResults([]);
+      setSearchEntity(null);
+    }
   }, [view]);
 
   useEffect(() => {
