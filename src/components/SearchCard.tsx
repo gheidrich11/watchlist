@@ -1,4 +1,4 @@
-import { SearchResult } from "../types/watchlist";
+import type { SearchResult } from "../types/watchlist";
 import { POSTER_BASE } from "../lib/constants";
 import { CheckIcon } from "./icons";
 
