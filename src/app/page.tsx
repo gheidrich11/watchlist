@@ -587,7 +587,7 @@ export default function Home() {
       </header>
 
       {/* ── Mobile Page Title ────────────────────────────────────────────────── */}
-      <div className="md:hidden flex items-center gap-2.5 px-4 pt-6 pb-1">
+      <div className="md:hidden flex items-center gap-2.5 px-4 pb-1" style={{ paddingTop: "calc(env(safe-area-inset-top) + 1.5rem)" }}>
         <ActiveIcon className="w-5 h-5 text-violet-400" />
         <h1 className="text-2xl font-bold tracking-tight">{activeNav.label}</h1>
       </div>
