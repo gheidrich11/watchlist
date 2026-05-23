@@ -16,14 +16,8 @@ function apiKey(): string {
   return key;
 }
 
-export interface TmdbSearchResult {
-  tmdbId: number;
-  title: string;
-  releaseYear: number | null;
-  posterPath: string | null;
-  posterUrl: string | null;
-  overview: string;
-}
+import type { SearchResult } from "../types/watchlist";
+export type TmdbSearchResult = SearchResult;
 
 export async function searchMovies(query: string): Promise<TmdbSearchResult[]> {
   const url = new URL(`${TMDB_BASE}/search/movie`);
