@@ -47,3 +47,9 @@ export interface ServiceEntry {
 }
 
 export type View = "available" | "watchlist" | "search" | "services";
+
+export interface Suggestion {
+  id: number;
+  label: string;
+  value: string;
+}

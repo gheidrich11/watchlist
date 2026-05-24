@@ -19,10 +19,17 @@ function apiKey(): string {
 import type { SearchResult } from "../types/watchlist";
 export type TmdbSearchResult = SearchResult;
 
-export async function searchMovies(query: string): Promise<TmdbSearchResult[]> {
+export interface TmdbSearchPage {
+  results: TmdbSearchResult[];
+  totalResults: number;
+  totalPages: number;
+}
+
+export async function searchMovies(query: string, page = 1): Promise<TmdbSearchPage> {
   const url = new URL(`${TMDB_BASE}/search/movie`);
   url.searchParams.set("api_key", apiKey());
   url.searchParams.set("query", query);
+  url.searchParams.set("page", String(page));
   url.searchParams.set("include_adult", "false");
   url.searchParams.set("language", "en-US");
 
@@ -30,20 +37,24 @@ export async function searchMovies(query: string): Promise<TmdbSearchResult[]> {
   if (!res.ok) throw new Error(`TMDB search failed: ${res.status}`);
 
   const data = await res.json();
-  return (data.results ?? []).map((r: {
-    id: number;
-    title: string;
-    release_date?: string;
-    poster_path: string | null;
-    overview: string;
-  }) => ({
-    tmdbId: r.id,
-    title: r.title,
-    releaseYear: r.release_date ? Number(r.release_date.slice(0, 4)) : null,
-    posterPath: r.poster_path,
-    posterUrl: r.poster_path ? `${TMDB_IMAGE_BASE}${r.poster_path}` : null,
-    overview: r.overview,
-  }));
+  return {
+    results: (data.results ?? []).map((r: {
+      id: number;
+      title: string;
+      release_date?: string;
+      poster_path: string | null;
+      overview: string;
+    }) => ({
+      tmdbId: r.id,
+      title: r.title,
+      releaseYear: r.release_date ? Number(r.release_date.slice(0, 4)) : null,
+      posterPath: r.poster_path,
+      posterUrl: r.poster_path ? `${TMDB_IMAGE_BASE}${r.poster_path}` : null,
+      overview: r.overview,
+    })),
+    totalResults: data.total_results ?? 0,
+    totalPages: data.total_pages ?? 1,
+  };
 }
 
 // Raw provider shape we store. Mirrors TMDB's structure so we keep

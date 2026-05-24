@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { POSTER_BASE, LOGO_BASE } from "../lib/constants";
-import type { SearchResult, ProviderGroup, UnavailableEntry, Bookmark, ServiceEntry, View } from "../types/watchlist";
+import type { SearchResult, Suggestion, ProviderGroup, UnavailableEntry, Bookmark, ServiceEntry, View } from "../types/watchlist";
 import { FilmIcon, ListIcon, PlusCircleIcon, TvIcon, XIcon, SearchIcon, CheckIcon } from "../components/icons";
 import { PosterCard } from "../components/PosterCard";
 import SearchCard from "../components/SearchCard";
@@ -25,6 +25,11 @@ export default function Home() {
   const [recommended, setRecommended] = useState<SearchResult[]>([]);
   const [searchMode, setSearchMode] = useState<"movie" | "actor" | "director" | "company">("movie");
   const [searchEntity, setSearchEntity] = useState<string | null>(null);
+  const [searchPage, setSearchPage] = useState(1);
+  const [searchTotalResults, setSearchTotalResults] = useState(0);
+  const [searchTotalPages, setSearchTotalPages] = useState(1);
+  const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Accordion states — all closed by default
@@ -45,6 +50,11 @@ export default function Home() {
       setQuery("");
       setSearchResults([]);
       setSearchEntity(null);
+      setSearchPage(1);
+      setSearchTotalResults(0);
+      setSearchTotalPages(1);
+      setSuggestions([]);
+      setShowSuggestions(false);
     }
   }, [view]);
 
@@ -58,8 +68,34 @@ export default function Home() {
     setQuery("");
     setSearchResults([]);
     setSearchEntity(null);
+    setSearchPage(1);
+    setSearchTotalResults(0);
+    setSearchTotalPages(1);
+    setSuggestions([]);
+    setShowSuggestions(false);
     inputRef.current?.focus();
   }, [searchMode]);
+
+  useEffect(() => {
+    if (!query.trim() || query.trim().length < 2 || searchResults.length > 0) {
+      setSuggestions([]);
+      setShowSuggestions(false);
+      return;
+    }
+    const t = setTimeout(async () => {
+      try {
+        const res = await fetch(
+          `/api/movies/suggest?q=${encodeURIComponent(query.trim())}&mode=${searchMode}`
+        );
+        const data = await res.json();
+        setSuggestions(data.suggestions ?? []);
+        setShowSuggestions((data.suggestions ?? []).length > 0);
+      } catch {
+        // ignore suggestion errors silently
+      }
+    }, 300);
+    return () => clearTimeout(t);
+  }, [query, searchMode, searchResults.length]);
 
   async function fetchServices() {
     const res = await fetch("/api/movies/services");
@@ -109,18 +145,32 @@ export default function Home() {
     );
   }
 
-  async function handleSearch(e: React.FormEvent) {
-    e.preventDefault();
-    if (!query.trim()) return;
+  async function executeSearch(q: string, mode: string, page: number) {
     setLoading(true);
-    setSearchEntity(null);
+    setShowSuggestions(false);
     const res = await fetch(
-      `/api/movies/search?q=${encodeURIComponent(query.trim())}&mode=${searchMode}`
+      `/api/movies/search?q=${encodeURIComponent(q)}&mode=${mode}&page=${page}`
     );
     const data = await res.json();
     setSearchResults(data.results ?? []);
+    if (mode === "movie") {
+      setSearchPage(page);
+      setSearchTotalResults(data.totalResults ?? 0);
+      setSearchTotalPages(data.totalPages ?? 1);
+    } else {
+      setSearchPage(1);
+      setSearchTotalResults(data.results?.length ?? 0);
+      setSearchTotalPages(1);
+    }
     if (data.entity) setSearchEntity(data.entity.name);
     setLoading(false);
+  }
+
+  async function handleSearch(e: React.FormEvent) {
+    e.preventDefault();
+    if (!query.trim()) return;
+    setSearchEntity(null);
+    await executeSearch(query.trim(), searchMode, 1);
   }
 
   async function addBookmark(result: SearchResult) {
@@ -256,7 +306,7 @@ export default function Home() {
             {/* Search form */}
             <form onSubmit={handleSearch} className="flex gap-2 mb-6">
               <div className="relative flex-1">
-                <SearchIcon className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500 pointer-events-none" />
+                <SearchIcon className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500 pointer-events-none z-10" />
                 <input
                   ref={inputRef}
                   type="text"
@@ -266,13 +316,29 @@ export default function Home() {
                     if (e.target.value.trim() === "") {
                       setSearchResults([]);
                       setSearchEntity(null);
+                      setSearchPage(1);
+                      setSearchTotalResults(0);
+                      setSearchTotalPages(1);
+                      setSuggestions([]);
+                      setShowSuggestions(false);
                     }
+                  }}
+                  onFocus={() => {
+                    if (suggestions.length > 0) setShowSuggestions(true);
+                  }}
+                  onBlur={() => {
+                    setTimeout(() => setShowSuggestions(false), 150);
                   }}
                   onKeyDown={(e) => {
                     if (e.key === "Escape") {
                       setQuery("");
                       setSearchResults([]);
                       setSearchEntity(null);
+                      setSearchPage(1);
+                      setSearchTotalResults(0);
+                      setSearchTotalPages(1);
+                      setSuggestions([]);
+                      setShowSuggestions(false);
                     }
                   }}
                   placeholder={
@@ -294,13 +360,42 @@ export default function Home() {
                       setQuery("");
                       setSearchResults([]);
                       setSearchEntity(null);
+                      setSearchPage(1);
+                      setSearchTotalResults(0);
+                      setSearchTotalPages(1);
+                      setSuggestions([]);
+                      setShowSuggestions(false);
                       inputRef.current?.focus();
                     }}
-                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-zinc-600 hover:text-zinc-400 transition-colors duration-150 cursor-pointer"
+                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-zinc-600 hover:text-zinc-400 transition-colors duration-150 cursor-pointer z-10"
                     aria-label="Clear search"
                   >
                     <XIcon className="w-4 h-4" />
                   </button>
+                )}
+
+                {/* Autocomplete dropdown */}
+                {showSuggestions && suggestions.length > 0 && (
+                  <ul className="absolute left-0 right-0 top-full mt-1 bg-zinc-900 border border-zinc-700/60 rounded-xl shadow-xl shadow-black/40 overflow-hidden z-50">
+                    {suggestions.map((s) => (
+                      <li key={s.id}>
+                        <button
+                          type="button"
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            setQuery(s.value);
+                            setShowSuggestions(false);
+                            setSuggestions([]);
+                            setSearchEntity(null);
+                            executeSearch(s.value, searchMode, 1);
+                          }}
+                          className="w-full text-left px-4 py-2.5 text-sm text-zinc-200 hover:bg-zinc-800 transition-colors duration-100 cursor-pointer"
+                        >
+                          {s.label}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
                 )}
               </div>
               <button
@@ -312,12 +407,26 @@ export default function Home() {
               </button>
             </form>
 
-            {/* Entity label */}
-            {searchEntity && searchResults.length > 0 && (
-              <p className="text-zinc-500 text-sm mb-4">
-                Results for{" "}
-                <span className="text-zinc-300 font-semibold">{searchEntity}</span>
-              </p>
+            {/* Entity label + result count */}
+            {searchResults.length > 0 && (
+              <div className="flex items-center justify-between mb-4 flex-wrap gap-y-1">
+                <p className="text-zinc-500 text-sm">
+                  {searchEntity ? (
+                    <>
+                      Results for{" "}
+                      <span className="text-zinc-300 font-semibold">{searchEntity}</span>
+                    </>
+                  ) : null}
+                </p>
+                {searchMode === "movie" && searchTotalResults > 0 && (
+                  <p className="text-zinc-600 text-xs tabular-nums">
+                    {((searchPage - 1) * 20 + 1).toLocaleString()}–
+                    {Math.min(searchPage * 20, searchTotalResults).toLocaleString()}
+                    {" "}of{" "}
+                    <span className="text-zinc-400">{searchTotalResults.toLocaleString()}</span>
+                  </p>
+                )}
+              </div>
             )}
 
             {/* Results */}
@@ -331,6 +440,31 @@ export default function Home() {
                     onAdd={() => addBookmark(r)}
                   />
                 ))}
+              </div>
+            )}
+
+            {/* Pagination controls */}
+            {searchMode === "movie" && searchTotalPages > 1 && searchResults.length > 0 && (
+              <div className="flex items-center justify-between mt-5 gap-3">
+                <button
+                  type="button"
+                  disabled={searchPage <= 1 || loading}
+                  onClick={() => executeSearch(query.trim(), searchMode, searchPage - 1)}
+                  className="flex-1 py-2.5 rounded-xl text-sm font-semibold bg-zinc-800/70 text-zinc-300 hover:bg-zinc-700/70 disabled:opacity-30 disabled:cursor-not-allowed transition-colors duration-150 cursor-pointer"
+                >
+                  ← Prev
+                </button>
+                <span className="text-zinc-600 text-xs tabular-nums whitespace-nowrap">
+                  {searchPage} / {searchTotalPages}
+                </span>
+                <button
+                  type="button"
+                  disabled={searchPage >= searchTotalPages || loading}
+                  onClick={() => executeSearch(query.trim(), searchMode, searchPage + 1)}
+                  className="flex-1 py-2.5 rounded-xl text-sm font-semibold bg-zinc-800/70 text-zinc-300 hover:bg-zinc-700/70 disabled:opacity-30 disabled:cursor-not-allowed transition-colors duration-150 cursor-pointer"
+                >
+                  Next →
+                </button>
               </div>
             )}
 

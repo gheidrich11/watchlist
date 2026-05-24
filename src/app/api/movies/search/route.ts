@@ -18,10 +18,12 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ results: [] });
   }
 
+  const page = Math.max(1, parseInt(req.nextUrl.searchParams.get("page") ?? "1", 10));
+
   try {
     if (mode === "movie") {
-      const results = await searchMovies(q.trim());
-      return NextResponse.json({ results });
+      const { results, totalResults, totalPages } = await searchMovies(q.trim(), page);
+      return NextResponse.json({ results, totalResults, totalPages, page });
     }
 
     if (mode === "actor" || mode === "director") {
