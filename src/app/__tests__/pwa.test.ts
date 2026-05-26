@@ -10,6 +10,10 @@ describe("manifest()", () => {
     expect(m.short_name).toBe("Watchlist");
   });
 
+  it("has a description", () => {
+    expect(m.description).toBeTruthy();
+  });
+
   it("has display set to standalone", () => {
     expect(m.display).toBe("standalone");
   });
@@ -24,11 +28,32 @@ describe("manifest()", () => {
   });
 
   it("includes the apple-touch-icon at 180x180", () => {
-    expect(m.icons).toHaveLength(1);
-    const icon = m.icons![0];
-    expect(icon.src).toBe("/apple-touch-icon.png");
-    expect(icon.sizes).toBe("180x180");
-    expect(icon.type).toBe("image/png");
+    const icon = m.icons!.find((i) => i.sizes === "180x180");
+    expect(icon).toBeDefined();
+    expect(icon!.src).toBe("/apple-touch-icon.png");
+    expect(icon!.type).toBe("image/png");
+  });
+
+  it("includes a 192x192 icon for PWA installability", () => {
+    const icon = m.icons!.find((i) => i.sizes === "192x192");
+    expect(icon).toBeDefined();
+    expect(icon!.src).toBe("/icon-192.png");
+  });
+
+  it("includes a 512x512 maskable icon for adaptive icon support", () => {
+    const icon = m.icons!.find(
+      (i) => i.sizes === "512x512" && i.purpose === "maskable"
+    );
+    expect(icon).toBeDefined();
+    expect(icon!.src).toBe("/icon-512.png");
+  });
+
+  it("includes a 512x512 any-purpose icon for splash screens", () => {
+    const icon = m.icons!.find(
+      (i) => i.sizes === "512x512" && i.purpose === "any"
+    );
+    expect(icon).toBeDefined();
+    expect(icon!.src).toBe("/icon-512.png");
   });
 });
 
@@ -44,15 +69,15 @@ describe("viewport export", () => {
   it("sets viewportFit to cover for iOS safe-area support", () => {
     expect(viewport.viewportFit).toBe("cover");
   });
+
+  it("sets themeColor to the dark zinc value", () => {
+    expect(viewport.themeColor).toBe("#09090b");
+  });
 });
 
 describe("metadata export", () => {
   it("points manifest to /manifest.webmanifest", () => {
     expect(metadata.manifest).toBe("/manifest.webmanifest");
-  });
-
-  it("sets themeColor to the dark zinc value", () => {
-    expect(metadata.themeColor).toBe("#09090b");
   });
 
   it("marks the app as apple-web-app capable", () => {

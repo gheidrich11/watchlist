@@ -19,3 +19,7 @@ dev.db-wal
 *.db
 *.db-shm
 *.db-wal
+
+# Playwright artifacts
+playwright-report/
+test-results/

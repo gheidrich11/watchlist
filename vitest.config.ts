@@ -8,6 +8,8 @@ export default defineConfig({
     environment: "jsdom",
     setupFiles: ["./vitest.setup.ts"],
     globals: true,
+    // Exclude Playwright spec files — those are run via `npx playwright test`, not Vitest
+    exclude: ["**/node_modules/**", "**/*.spec.ts"],
   },
   resolve: {
     alias: { "@": path.resolve(__dirname, "./src") },
