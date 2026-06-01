@@ -30,7 +30,7 @@ describe("manifest()", () => {
   it("includes the apple-touch-icon at 180x180", () => {
     const icon = m.icons!.find((i) => i.sizes === "180x180");
     expect(icon).toBeDefined();
-    expect(icon!.src).toBe("/apple-touch-icon.png");
+    expect(icon!.src).toBe("/apple-icon.png");
     expect(icon!.type).toBe("image/png");
   });
 

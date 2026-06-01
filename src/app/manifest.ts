@@ -7,6 +7,7 @@ export default function manifest(): MetadataRoute.Manifest {
     description: "Track movies and shows you want to watch.",
     display: "standalone",
     start_url: "/",
+    // #09090b is Tailwind zinc-950 — the app's intentional dark background, not pure black (#000000)
     background_color: "#09090b",
     theme_color: "#09090b",
     icons: [
