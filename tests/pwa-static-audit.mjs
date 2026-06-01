@@ -13,6 +13,7 @@
  */
 
 import { readFileSync, existsSync } from "fs";
+import { createHash } from "node:crypto";
 import { resolve, dirname } from "path";
 import { fileURLToPath } from "url";
 
@@ -221,7 +222,69 @@ hasSafeArea
       "         body { padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); }"
     );
 
-// ─── 5. Summary ──────────────────────────────────────────────────────────────
+// ─── 5. public/ icons (branded, not placeholder) ─────────────────────────────
+//
+// Tradeoff: hash-inequality guards the specific known placeholder bytes.
+// Dimension check guards wrong-size exports. Neither check guards against an
+// arbitrary future flat-color image — that would require perceptual hashing,
+// which is out of scope here.
+
+section("public/ icons (branded, not placeholder)");
+
+const PUBLIC_ICONS = [
+  {
+    file: "public/icon-192.png",
+    placeholderHash: "4178aebfac5c11fe1f82446e3b39f364d51a90ace9ea046818fb450855837ed2",
+    width: 192,
+    height: 192,
+  },
+  {
+    file: "public/icon-512.png",
+    placeholderHash: "926e3bd295f47746491533acfcdb401ca199f3c54b8dc87b78383c3ec6e1bfa3",
+    width: 512,
+    height: 512,
+  },
+];
+
+const PNG_SIG_PUBLIC = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+
+for (const icon of PUBLIC_ICONS) {
+  const iconPath = resolve(ROOT, icon.file);
+  if (!existsSync(iconPath)) {
+    fail(`${icon.file} exists`);
+    continue;
+  }
+  pass(`${icon.file} exists`);
+
+  const buf = readFileSync(iconPath);
+
+  // (a) sha256 must not equal the known black-placeholder hash
+  const hash = createHash("sha256").update(buf).digest("hex");
+  hash !== icon.placeholderHash
+    ? pass(`${icon.file} is not the known placeholder (sha256 differs)`)
+    : fail(
+        `${icon.file} is still the placeholder image`,
+        `Replace ${icon.file} with a branded icon — current sha256 matches the known black placeholder`
+      );
+
+  // (b) valid PNG signature
+  const validPng = buf.slice(0, 8).equals(PNG_SIG_PUBLIC);
+  validPng
+    ? pass(`${icon.file} valid PNG signature`)
+    : fail(`${icon.file} invalid PNG signature`);
+
+  // (c) exact dimensions from IHDR chunk
+  const w = buf.readUInt32BE(16);
+  const h = buf.readUInt32BE(20);
+  w === icon.width && h === icon.height
+    ? pass(`${icon.file} dimensions: ${w}×${h}`)
+    : fail(
+        `${icon.file} dimensions: ${w}×${h}`,
+        `Expected exactly ${icon.width}×${icon.height}`
+      );
+}
+
+// ─── 6. Summary ──────────────────────────────────────────────────────────────
 
 console.log(`\n${"─".repeat(63)}`);
 console.log(`  ${passed} passed   ${failed} failed`);
