@@ -163,6 +163,12 @@ if (!existsSync(HTML_PATH)) {
       name: 'theme-color meta tag',
       re: /name="theme-color"|name="mobile-web-app-capable"/,
     },
+    {
+      name: 'apple-touch-icon link with cache-busting hash (?<hash>)',
+      re: /rel="apple-touch-icon"[^>]*href="\/apple-icon\.png\?[^"]+"/,
+      fix: 'Expected Next.js to emit <link rel="apple-touch-icon" href="/apple-icon.png?<hash>">.\n' +
+        '       Ensure src/app/apple-icon.png exists (the app-dir metadata convention).',
+    },
   ];
 
   for (const check of checks) {
@@ -174,13 +180,13 @@ if (!existsSync(HTML_PATH)) {
 
 // ─── 3. apple-touch-icon.png ─────────────────────────────────────────────────
 
-section("public/apple-touch-icon.png");
+section("src/app/apple-icon.png");
 
-const ICON_PATH = resolve(ROOT, "public/apple-touch-icon.png");
+const ICON_PATH = resolve(ROOT, "src/app/apple-icon.png");
 if (!existsSync(ICON_PATH)) {
-  fail("public/apple-touch-icon.png exists");
+  fail("src/app/apple-icon.png exists");
 } else {
-  pass("public/apple-touch-icon.png exists");
+  pass("src/app/apple-icon.png exists");
 
   const buf = readFileSync(ICON_PATH);
   const PNG_SIG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);

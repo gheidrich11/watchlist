@@ -13,6 +13,7 @@
     "test:ios": "npx playwright test tests/ios-pwa.spec.ts --project=\"Mobile Safari\"",
     "test:ios:all": "npx playwright test tests/ios-pwa.spec.ts",
     "test:ios:ui": "npx playwright test tests/ios-pwa.spec.ts --ui",
+    "test:icon": "npx playwright test tests/apple-icon.spec.ts --project=\"Mobile Safari\"",
     "audit:pwa": "node scripts/pwa-audit.mjs",
     "test:all": "npm run test && npm run test:pwa && npm run test:ios"
   },

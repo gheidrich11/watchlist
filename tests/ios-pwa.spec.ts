@@ -156,9 +156,18 @@ test("viewport includes viewport-fit=cover (notch / Dynamic Island)", async ({ p
 
 // ─── 4. apple-touch-icon ──────────────────────────────────────────────────────
 
-test("apple-touch-icon.png is reachable (200 OK)", async ({ page }) => {
-  const response = await page.request.get("/apple-touch-icon.png");
-  expect(response.status(), "/apple-touch-icon.png returned non-200").toBe(200);
+test("apple-touch-icon link is in <head> and reachable (200 OK)", async ({ page }) => {
+  // Next.js generates this from src/app/apple-icon.png, with a content-hash
+  // query string for cache-busting (e.g. /apple-icon.png?abc123).
+  const href = await page.$eval(
+    'link[rel="apple-touch-icon"]',
+    (el) => el.getAttribute("href")
+  ).catch(() => null);
+
+  expect(href, '<link rel="apple-touch-icon"> missing from <head>').toBeTruthy();
+
+  const response = await page.request.get(href!);
+  expect(response.status(), `${href} returned non-200`).toBe(200);
   expect(
     response.headers()["content-type"],
     "apple-touch-icon should be image/png"
